@@ -16,10 +16,11 @@ function initializeCurvixEngine() {
             });
         };
     }
-
+    
     var container = document.getElementById('curvix-container');
     var vid = document.getElementById('vid');
     var gl_overlay = document.getElementById('gl_overlay');
+    var b_cam = document.getElementById('b_cam_input');
 
 
     // 2. DOM Safeguard
@@ -94,12 +95,8 @@ function initializeCurvixEngine() {
             alert("Hardware Stream Failure: " + hardwareError.name);
         });
 
-
-    // 4. Track Muting Switch (Paste at the bottom inside initializeCurvixEngine)
-    var b_cam = document.getElementById('b_cam_input');
-    
+    // Logic for camera toogle
     b_cam.addEventListener('change', function() {
-    // NOTE: Agar tumhara checkbox check hone par camera OFF hota hai:
         if (b_cam.checked) {
             if (vid.srcObject) {
                 var stream = vid.srcObject;
@@ -117,7 +114,6 @@ function initializeCurvixEngine() {
         } else {
             console.log("⏳ Re-initializing Camera Engine smoothly without reload...");
             
-            // 3. Page reload karne ki jagah direct core function ko firse call karo!
             initializeCurvixEngine(); 
         }    
     });
