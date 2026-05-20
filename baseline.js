@@ -21,6 +21,7 @@ function initializeCurvixEngine() {
     var vid = document.getElementById('vid');
     var gl_overlay = document.getElementById('gl_overlay');
 
+
     // 2. DOM Safeguard
     if (!container || !vid || !gl_overlay) {
         console.error("❌ CRITICAL: DOM node link failure.");
@@ -92,6 +93,22 @@ function initializeCurvixEngine() {
             console.error("❌ CRITICAL: Pipeline access rejected by hardware driver.", hardwareError);
             alert("Hardware Stream Failure: " + hardwareError.name);
         });
+
+
+    // 4. Track Muting Switch (Paste at the bottom inside initializeCurvixEngine)
+    var b_cam = document.getElementById('b_cam_input');
+    
+    b_cam.addEventListener('change', function() {
+        if (b_cam.checked && vid.srcObject) {
+            // Instantly cuts physical power to the camera lens
+            vid.srcObject.getTracks()[0].stop(); 
+            console.log("🛑 Camera hardware turned OFF");
+        } else {
+            // Simply refresh the page to restart the camera engine instantly
+            location.reload(); 
+        }    
+    });
+
 }
 
 // Safely execute once layout tree structure is parsed completely
