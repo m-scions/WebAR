@@ -99,13 +99,26 @@ function initializeCurvixEngine() {
     var b_cam = document.getElementById('b_cam_input');
     
     b_cam.addEventListener('change', function() {
-        if (b_cam.checked && vid.srcObject) {
-            // Instantly cuts physical power to the camera lens
-            vid.srcObject.getTracks()[0].stop(); 
-            console.log("🛑 Camera hardware turned OFF");
+    // NOTE: Agar tumhara checkbox check hone par camera OFF hota hai:
+        if (b_cam.checked) {
+            if (vid.srcObject) {
+                var stream = vid.srcObject;
+                var tracks = stream.getTracks();
+                
+                // 1. Saare tracks ko safe loop se stop karo (sirf 0 waale ko nahi)
+                for (var i = 0; i < tracks.length; i++) {
+                    tracks[i].stop();
+                }
+                
+                // 2. Video element se link todo taaki browser RAM free kar sake (No Leak!)
+                vid.srcObject = null; 
+                console.log("🛑 Camera hardware turned OFF & memory references cleared.");
+            }
         } else {
-            // Simply refresh the page to restart the camera engine instantly
-            location.reload(); 
+            console.log("⏳ Re-initializing Camera Engine smoothly without reload...");
+            
+            // 3. Page reload karne ki jagah direct core function ko firse call karo!
+            initializeCurvixEngine(); 
         }    
     });
 
