@@ -22,6 +22,7 @@ function bootstrapCurvixEngine() {
     var vid = document.getElementById('vid');
     var gl_overlay = document.getElementById('gl_overlay');
     var b_cam = document.getElementById('b_cam_input');
+    var debugPanel = document.getElementById('camera-debug-panel');
 
     if (!container || !vid || !gl_overlay || !b_cam) {
         console.error("❌ CRITICAL: DOM node link failure.");
@@ -51,6 +52,13 @@ function bootstrapCurvixEngine() {
         gl_overlay.style.height = hScreen + "px";
 
         console.log("✅ Layers Synchronized: " + wVideo + "x" + hVideo);
+
+        debugPanel.innerHTML = `
+                <h1>System Hardware Info:</h1>
+                <hr>
+                <b>Active Native Stream Pipeline:</b><br/>
+                ├─ <b>HTML Video Element Res:</b> <span> ${wVideo}x${hVideo} px </span> <br/>
+                └─ <b>Hardware Track Config:</b> <span> ${wScreen}x${hScreen} px </span> <br/>`;
     };
 
     // Core execution pipeline: Start Camera Stream
@@ -80,6 +88,9 @@ function bootstrapCurvixEngine() {
                 alert("Hardware Stream Failure: " + err.name);
             });
     }
+
+
+    
 
     // Core execution pipeline: Stop Camera Stream cleanly
     function stopCameraPipeline() {
