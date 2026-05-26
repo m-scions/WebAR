@@ -59,6 +59,13 @@
             margin: 0;
             margin-bottom: 5px;
         }
+
+        #gl_overlay{
+            position: absolute;
+            bottom: 0px;
+            left: 0px;
+            z-index: 5;
+        }
     </style>
     <script src="baseline.js" defer></script>
 </head>
@@ -81,7 +88,7 @@
         </video>
 
         <canvas id="gl_overlay" 
-                style="position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; will-change: transform; -webkit-transform: translateZ(0); transform: translateZ(0);">
+                style="pointer-events: none; will-change: transform; -webkit-transform: translateZ(0); transform: translateZ(0);">
         </canvas>
     </div>
 
