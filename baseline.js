@@ -177,8 +177,8 @@ function settingCamera() {
 
         gl_overlay.width = wScreen;
         gl_overlay.height = hScreen;
-        gl_overlay.style.width = wScreen/5 + "px";
-        gl_overlay.style.height = hScreen/5 + "px";
+        gl_overlay.style.width = wScreen + "px";
+        gl_overlay.style.height = hScreen + "px";
 
         if (gl) {
             gl.viewport(0, 0, wScreen, hScreen);
