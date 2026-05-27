@@ -7,6 +7,8 @@ var isWebGL2Supported = false;
 var gl = null;
 var posAttributeLocation = null;
 var textureLocation = null;
+var stagingCanvas = null;
+var stagingCtx = null;
 
 // --- shader source string ---:
 
@@ -39,7 +41,6 @@ var positionBuffer = null;
 
 // Declare global WebGL hooks (initialized once DOM loads)
 var canvas = null;
-var gl = null;
 
 // Function to initialize WebGL states
 function init() {
@@ -123,8 +124,8 @@ function allocateVRAMTexture(width, height, isWebGL2) {
     // 4. Texture filtering settings lagao (Performance ke liye NEAREST use karo) - INTACT!
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); 
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     // 5. Hardened Full RGBA Format Block Allocation (Bypasses single-channel issues)
     // WebGL 2 aur WebGL 1 dono natively gl.RGBA ko DMA transfer speed par hardware surface par space lock karte hain.
@@ -179,10 +180,18 @@ function settingCamera() {
         gl_overlay.height = hScreen;
         gl_overlay.style.width = wScreen + "px";
         gl_overlay.style.height = hScreen + "px";
-
         if (gl) {
             gl.viewport(0, 0, wScreen, hScreen);
         }
+
+        if (!stagingCanvas) {
+            stagingCanvas = document.createElement('canvas');
+            // willReadFrequently: false lagane se browser ise pure GPU-accelerated memory mein rakhta hai
+            stagingCtx = stagingCanvas.getContext('2d', { willReadFrequently: false });
+        }
+
+        stagingCanvas.width = wVideo;
+        stagingCanvas.height = hVideo;
 
         //allocating to vram:
         allocateVRAMTexture(wVideo, hVideo, isWebGL2Supported);
@@ -261,8 +270,8 @@ function settingCamera() {
 }
 
 function updateVideoTextureToGPU(videoElement, isWebGL2) {
-    if (!gl || !vidtex || !videoElement) {
-        return; // Safe exit (~0ms CPU load) - Saare errors/warnings yahin block ho gaye! - INTACT!
+    if (!gl || !vidtex || !videoElement || !stagingCtx) {
+        return; 
     }
 
     // Same-frame time matching layer: stops redundant calculations and bus stalls - INTACT!
@@ -272,13 +281,14 @@ function updateVideoTextureToGPU(videoElement, isWebGL2) {
 
     lastFrameTime = videoElement.currentTime; // Caching frame execution pointer - INTACT!
 
+    stagingCtx.drawImage(videoElement, 0, 0, stagingCanvas.width, stagingCanvas.height);
     gl.bindTexture(gl.TEXTURE_2D, vidtex);
 
     // Strictly Full-Color Native Format for absolute zero-copy hardware decoding pass
     var format = gl.RGBA;
 
     // Zero reallocation, pure GPU-to-GPU memory transfer - INTACT!
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, format, gl.UNSIGNED_BYTE, videoElement);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, format, gl.UNSIGNED_BYTE, stagingCanvas);
 
     // steps for drawing the gpu texture in screen: - INTACT!
     gl.useProgram(shaderProgram);
