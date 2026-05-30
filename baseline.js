@@ -12,10 +12,11 @@ var stagingCtx             = null;
 var useCanvasFallback      = false;
 var cameraElement          = null; 
 var rafHandle              = null;
-var logs                   = ['-- logs --------------------'];
+var isProbeArmed           = true;
+var logs                   = '-- logs --------------------';
 
 function staticDummyExecutor(vid) { /* Safe No-Op: runs before camera is ready */ }
-var updateTextureExecutor = updateVideoTextureDirect;
+var updateTextureExecutor = staticDummyExecutor;
 
 // ── SHADERS ───────────────────────────────────────────────────────────────────
 // [VS] Y-flip handled here (free, no pipeline stall) — UNPACK_FLIP_Y_WEBGL stays false
@@ -47,28 +48,29 @@ var canvas         = null;
 
 // ── LIVE LOGS ──────────────────────────────────────────────────────────────────
 //A logging system for mobile browsers:
-var logBox  = document.getElementById('logs');
+var logBox  = null;
 function logit(text, mode = 1){
     if (mode === 1){
         //normal mode
-        logs = logs + '<br>' +[text];
+        logs = logs + '<br>' +text;
         console.log(text)
     }
     if (mode === 2){
         //warn mode
-        logs = logs + '<br> <span id="warn">' + [text] + '</span>';
+        logs = logs + '<br> <span id="warn">' + text + '</span>';
         console.warn(text)
     }
     if (mode === 3){
         //error mode
-        logs = logs + '<br> <span id="error">' + [text] + '</span>';
+        logs = logs + '<br> <span id="error">' + text + '</span>';
         console.error(text)
     }
-    logBox.innerHTML = logs;
+    if (logBox) logBox.innerHTML = logs;
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 function init() {
+    logBox  = document.getElementById('logs');
     canvas = document.querySelector("#gl_overlay");
 
     var ctxOptions = {
@@ -92,6 +94,30 @@ function init() {
     if (!gl) {
         logit("❌ CRITICAL: WebGL context creation failed.", 3);
         return;
+    }
+
+    // ── GPU detection ─────────────────────────────────────────────────────────
+    var gpuName = "Unknown GPU";
+    var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+    if (debugInfo) {
+        gpuName = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+    } else {
+        // Fallback for Firefox and anti-fingerprinting browsers
+        gpuName = gl.getParameter(gl.RENDERER); 
+    }
+    
+    var gpuUpper = gpuName.toUpperCase();
+    logit("📱 GPU: " + gpuName);
+
+    var isLegacySilicon =
+        /MALI-(2\d\d|3\d\d|4[05]\d|47\d)/.test(gpuUpper) ||
+        /ADRENO \(TM\) [234]\d\d/.test(gpuUpper)          ||
+        gpuUpper.includes('SGX')                           ||
+        /TEGRA [234]\b/.test(gpuUpper)                     ||
+        gpuUpper.includes('VIVANTE') || /\bGC\d{3,4}\b/.test(gpuUpper);
+
+    if (isLegacySilicon) {
+        logit("⚠️ Legacy silicon — stride/NPOT guardrails active.", 2);
     }
 
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);                        // Mali-4xx stride crash fix
@@ -134,6 +160,16 @@ function init() {
     gl.uniform1i(textureLocation, 0);
 
     logit("✅ Initialization & shader compilation done!");
+}
+
+function restoreHoistedState() {
+    gl.useProgram(shaderProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.vertexAttribPointer(posAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, vidtex); // Real texture rebind
+    gl.uniform1i(textureLocation, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); // FBO ko null pe wapas
 }
 
 // ── VRAM ALLOCATION ───────────────────────────────────────────────────────────
@@ -201,8 +237,8 @@ function settingCamera() {
         if (wScreen === 0 || hScreen === 0) return; // [MISC] Container not yet laid out
 
         var targetScale  = Math.max(wScreen / wVideo, hScreen / hVideo);
-        var targetWidth  = Math.round(wVideo * targetScale); // [B6] Integer canvas dimensions
-        var targetHeight = Math.round(hVideo * targetScale); // [B6]
+        var targetWidth  = Math.round(wVideo * targetScale);  
+        var targetHeight = Math.round(hVideo * targetScale); 
 
         // Old code had this inside the VRAM guard, so orientation changes / window resizes
         // never updated the viewport or CSS when video dimensions hadn't changed.
@@ -219,7 +255,7 @@ function settingCamera() {
                          || stagingCanvas.width  !== wVideo
                          || stagingCanvas.height !== hVideo;
 
-        if (!needsVRAMInit) return; // Layout updated above; VRAM already correct
+        if (!needsVRAMInit) return; 
 
         if (!stagingCanvas) {
             stagingCanvas = document.createElement('canvas');
@@ -230,14 +266,18 @@ function settingCamera() {
         stagingCanvas.width  = wVideo;
         stagingCanvas.height = hVideo;
 
-        allocateVRAMTexture(wVideo, hVideo); // [B8] No parameter — uses global directly
+        allocateVRAMTexture(wVideo, hVideo); 
 
-        if (useCanvasFallback) {
-            logit("⚠️ Fallback Mode: Android SurfaceTexture canvas workaround active.", 2);
-            updateTextureExecutor = updateVideoTextureCanvasFallback;
+        if (isProbeArmed) {
+            updateTextureExecutor = probeExecutor;
+            logit("⏳ [PROBE] Probe armed — awaiting first camera frame...");
+            isProbeArmed = false; // Lock it forever
         } else {
-            logit("🚀 Direct Upload Path Active.");
-            updateTextureExecutor = updateVideoTextureDirect;
+            // Restore path without re-running the heavy probe
+            updateTextureExecutor = useCanvasFallback 
+                ? updateVideoTextureCanvasFallback 
+                : updateVideoTextureDirect;
+            logit("🚀 Pipeline restored safely using previous hardware configuration.");
         }
 
         logit("✅ Layers Synchronized: " + wVideo + "x" + hVideo);
@@ -291,7 +331,7 @@ function settingCamera() {
             })
             .catch(function(err) {
                 isCameraStarting = false;
-                
+
                 console.error("❌ CRITICAL: Hardware rejected pipeline.", err)
                 logit("❌ CRITICAL: Hardware rejected pipeline." + err);
                 alert("Hardware Stream Failure: " + err.name);
@@ -355,6 +395,92 @@ function updateVideoTextureCanvasFallback(videoElement) {
     gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, stagingCanvas);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ── VIDEO UPLOAD CAPABILITY PROBE ─────────────────────────────────────────
+// Runs ONCE on first valid camera frame. Self-replaces after completion.
+// No render loop involvement — pure init-time detection.
+function probeDirectVideoUpload(videoElement) {
+    var vw = videoElement.videoWidth;   
+    var vh = videoElement.videoHeight;
+
+    var probeTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, probeTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S,     gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T,     gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, vw, vh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); 
+
+    // Step 3: Direct video upload attempt 
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
+
+    // Fast-exit: OUT_OF_MEMORY path (confirmed on Pixel 6 Pro — bug #1884282)
+    var uploadError = gl.getError();
+    if (uploadError !== gl.NO_ERROR) {
+        logit("[PROBE] getError → " + uploadError + " — direct upload broken.", 2);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.deleteTexture(probeTex);
+        restoreHoistedState();
+        return false;
+    }
+
+    // FBO attach for GPU readback
+    var probeFBO = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, probeFBO);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+        gl.TEXTURE_2D, probeTex, 0);
+
+    var directWorks = false;
+
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+        var pixel = new Uint8Array(4);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+
+        // alpha=255 → hardware set it (YUV→RGBA always opaque) → upload worked
+        // alpha=127 → sentinel untouched → silent failure
+        // alpha=0   → browser wrote zeros ("Uploading zeros" path)
+        directWorks = (pixel[3] === 255);
+
+        logit("[PROBE] R:" + pixel[0] + " G:" + pixel[1] +
+              " B:" + pixel[2] + " A:" + pixel[3] +
+              " → " + (directWorks ? "✅ Direct CONFIRMED" : "❌ FAILED (A=" + pixel[3] + ")"),
+              directWorks ? 1 : 2);
+    } else {
+        logit("[PROBE] FBO incomplete → canvas fallback.", 2);
+    }
+
+    // Cleanup 
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.deleteFramebuffer(probeFBO);
+    gl.deleteTexture(probeTex);
+
+    restoreHoistedState();
+    return directWorks;
+}
+
+function probeExecutor(videoElement) {
+    if (videoElement.readyState < 2) return; // Pehle valid frame ka wait
+
+    // Self-replace PEHLE — re-entry impossible (JS single-threaded, but clean)
+    updateTextureExecutor = staticDummyExecutor;
+
+    var directWorks   = probeDirectVideoUpload(videoElement);
+    useCanvasFallback = !directWorks;
+
+    updateTextureExecutor = directWorks
+        ? updateVideoTextureDirect
+        : updateVideoTextureCanvasFallback;
+
+    logit(directWorks
+        ? "🚀 [PROBE] PASS — Zero-copy direct path locked."
+        : "⚠️ [PROBE] FAIL — Canvas fallback locked.", directWorks ? 1 : 2);
+
+    // Current frame miss na ho
+    lastFrameTime = -1;
+    updateTextureExecutor(videoElement);
 }
 
 // ── SHADER COMPILATION ────────────────────────────────────────────────────────
