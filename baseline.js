@@ -163,6 +163,7 @@ function allocateVRAMTexture(width, height) {
 
 // ── CAMERA SETUP ──────────────────────────────────────────────────────────────
 function settingCamera() {
+
     // Legacy polyfill for Android 4.x / early Android 5.x browsers
     if (!navigator.mediaDevices) { navigator.mediaDevices = {}; }
     if (!navigator.mediaDevices.getUserMedia) {
@@ -250,7 +251,11 @@ function settingCamera() {
     };
 
     // ── Camera pipeline ───────────────────────────────────────────────────────
+    var isCameraStarting = false;
     function startCameraPipeline() {
+        if (isCameraStarting) return; 
+        isCameraStarting = true;
+
         var constraints = {
             audio: false,
             video: {
@@ -261,6 +266,16 @@ function settingCamera() {
         };
         navigator.mediaDevices.getUserMedia(constraints)
             .then(function(stream) {
+                isCameraStarting = false;
+                // Agar OS ne stream de di, par is 500ms ke wait time me user ne button "OFF" kar diya tha
+                // Toh is hardware stream ko memory me aane se pehle hi turant destroy kar do!
+                if (b_cam.checked) {
+                    logit("⚠️ Camera opened but user requested stop in-between. Destroying orphaned stream.");
+                    var tracks = stream.getTracks();
+                    for (var i = 0; i < tracks.length; i++) { tracks[i].stop(); }
+                    return; 
+                }
+
                 webStream = stream;
                 vid.addEventListener('playing', alignHardwareLayersRef);
                 vid.srcObject = stream;
@@ -275,6 +290,8 @@ function settingCamera() {
                 logit("🚀 Camera hardware linked successfully.");
             })
             .catch(function(err) {
+                isCameraStarting = false;
+                
                 console.error("❌ CRITICAL: Hardware rejected pipeline.", err)
                 logit("❌ CRITICAL: Hardware rejected pipeline." + err);
                 alert("Hardware Stream Failure: " + err.name);
@@ -298,7 +315,6 @@ function settingCamera() {
             stagingCanvas         = null; // Forces full re-init on next start
             stagingCtx            = null;
 
-            // [B10] Cancel rAF — no point running an empty loop when camera is off
             if (rafHandle) {
                 cancelAnimationFrame(rafHandle);
                 rafHandle = null;
