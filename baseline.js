@@ -577,8 +577,8 @@ function updateVideoTextureIOSurfaceWebGL1(videoElement) {
     if (videoElement.currentTime === lastFrameTime || videoElement.readyState < 2) return;
     lastFrameTime = videoElement.currentTime;
     gl.bindTexture(gl.TEXTURE_2D, vidtex);
-    // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
+    // gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
