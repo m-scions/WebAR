@@ -21,7 +21,11 @@ var gpuPipeline            = null;    // GPURenderPipeline
 var gpuSampler             = null;    // GPUSampler (reused every frame)
 var gpuBindGroupLayout     = null;    // GPUBindGroupLayout (reused every frame)
 var GPU_CLEAR_VALUE        = { r: 0, g: 0, b: 0, a: 1 };
+let currentWidth           = window.innerWidth;
+let currentHeight          = window.innerHeight;
 var logs                   = '-- logs --------------------';
+var uResolutionLoc         = null;
+let resolutionBuffer;
 
 function staticDummyExecutor(vid) { /* Safe No-Op: runs before camera is ready */ }
 var updateTextureExecutor = staticDummyExecutor;
@@ -29,6 +33,7 @@ var updateTextureExecutor = staticDummyExecutor;
 // ── SHADERS ───────────────────────────────────────────────────────────────────
 // [VS] Y-flip handled here (free, no pipeline stall) — UNPACK_FLIP_Y_WEBGL stays false
 var VS_SOURCE = `
+    uniform vec2 u_resolution;
     attribute vec2 a_position;
     varying vec2 v_texCoord;
     void main() {
@@ -114,6 +119,47 @@ function logit(text, mode = 1){
     if (logBox) logBox.innerHTML = logs;
 }
 
+// ── COMMON HARDWARE INFO COLLECTOR ───────────────────────────────────────────────────
+function hardwareInfo(){
+    var _ua = navigator.userAgent;
+    isSafariWebKit = (navigator.vendor === 'Apple Computer, Inc.')
+    && _ua.indexOf('CriOS') === -1   // Chrome iOS
+    && _ua.indexOf('FxiOS') === -1   // Firefox iOS
+    && _ua.indexOf('OPiOS') === -1   // Opera iOS
+    && _ua.indexOf('EdgA')  === -1;  // Edge iOS
+
+    if (isSafariWebKit) {
+        logit("Safari/WebKit detected — IOSurface path will be used.");
+    }
+
+    // ── GPU detection ─────────────────────────────────────────────────────────
+    var gpuName = "Unknown GPU";
+    if (gl) {
+        var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+            gpuName = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        } else {
+            gpuName = gl.getParameter(gl.RENDERER); 
+        }
+    } else if (gpuDevice) {
+        gpuName = "WebGPU Native Pipeline";
+    }
+    
+    var gpuUpper = gpuName.toUpperCase();
+    logit("📱 GPU: " + gpuName);
+
+    var isLegacySilicon =
+        /MALI-(2\d\d|3\d\d|4[05]\d|47\d)/.test(gpuUpper)   ||
+        /ADRENO \(TM\) [234]\d\d/.test(gpuUpper)           ||
+        gpuUpper.includes('SGX')                           ||
+        /TEGRA [234]\b/.test(gpuUpper)                     ||
+        gpuUpper.includes('VIVANTE') || /\bGC\d{3,4}\b/.test(gpuUpper);
+
+    if (isLegacySilicon) {
+        logit("⚠️ Legacy silicon — stride/NPOT guardrails active.", 2);
+    }
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 function init() {
     canvas = document.querySelector("#gl_overlay");
@@ -141,42 +187,9 @@ function init() {
         return;
     }
 
-    var _ua = navigator.userAgent;
-    isSafariWebKit = (navigator.vendor === 'Apple Computer, Inc.')
-        && _ua.indexOf('CriOS') === -1   // Chrome iOS
-        && _ua.indexOf('FxiOS') === -1   // Firefox iOS
-        && _ua.indexOf('OPiOS') === -1   // Opera iOS
-        && _ua.indexOf('EdgA')  === -1;  // Edge iOS
+    hardwareInfo();
 
-    if (isSafariWebKit) {
-        logit("Safari/WebKit detected — IOSurface path will be used.");
-    }
-
-    // ── GPU detection ─────────────────────────────────────────────────────────
-    var gpuName = "Unknown GPU";
-    var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-    if (debugInfo) {
-        gpuName = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-    } else {
-        // Fallback for Firefox and anti-fingerprinting browsers
-        gpuName = gl.getParameter(gl.RENDERER); 
-    }
-    
-    var gpuUpper = gpuName.toUpperCase();
-    logit("📱 GPU: " + gpuName);
-
-    var isLegacySilicon =
-        /MALI-(2\d\d|3\d\d|4[05]\d|47\d)/.test(gpuUpper) ||
-        /ADRENO \(TM\) [234]\d\d/.test(gpuUpper)          ||
-        gpuUpper.includes('SGX')                           ||
-        /TEGRA [234]\b/.test(gpuUpper)                     ||
-        gpuUpper.includes('VIVANTE') || /\bGC\d{3,4}\b/.test(gpuUpper);
-
-    if (isLegacySilicon) {
-        logit("⚠️ Legacy silicon — stride/NPOT guardrails active.", 2);
-    }
-
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);                        // Mali-4xx stride crash fix
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);                         // Mali-4xx stride crash fix
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE); // No color-matrix overhead
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);       // No alpha channel waste
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);                  // [B4] Adreno 3xx NPOT freeze fix — global lock
@@ -235,6 +248,7 @@ async function detectWebGPU() {
 }
 
 function initWebGPU() {
+    hardwareInfo();
     canvas = document.querySelector('#gl_overlay');
 
     gpuContext = canvas.getContext('webgpu');
@@ -258,6 +272,12 @@ function initWebGPU() {
         addressModeV: 'clamp-to-edge',
     });
 
+    //resolution buffer:
+    resolutionBuffer = gpuDevice.createBuffer({
+        size: 8, // vec2f = 8 bytes
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
     var shaderModule = gpuDevice.createShaderModule({ code: WGSL_SOURCE });
 
     gpuPipeline = gpuDevice.createRenderPipeline({
@@ -277,6 +297,9 @@ function initWebGPU() {
     // BindGroupLayout: pre-create ONCE for reuse
     // bindGroup itself must be recreated per frame (externalTexture expires on use)
     gpuBindGroupLayout = gpuPipeline.getBindGroupLayout(0);
+
+    const resData = new Float32Array([currentWidth, currentHeight]);
+    gpuDevice.queue.writeBuffer(resolutionBuffer, 0, resData.buffer);
 
     logit('✅ [WebGPU] Pipeline initialized. Hardware YUV path active.');
     return true;
@@ -299,7 +322,7 @@ function renderWebGPU(videoElement) {
             { binding: 1, resource: externalTexture     },
         ],
     });
-
+    
     var cmd  = gpuDevice.createCommandEncoder();
     var pass = cmd.beginRenderPass({
         colorAttachments: [{
@@ -309,7 +332,7 @@ function renderWebGPU(videoElement) {
             storeOp:    'store',
         }],
     });
-
+    
     pass.setPipeline(gpuPipeline);
     pass.setBindGroup(0, bindGroup);
     pass.draw(4); // 4 vertices, TRIANGLE_STRIP
@@ -429,13 +452,15 @@ function settingCamera() {
             });
 
             logit("🚀 [WebGPU] Canvas resized — no VRAM realloc needed.");
-            return; // WebGPU ke liye koi aur setup nahi
+            return; 
 
         } else if (isSafariWebKit && isWebGL2Supported) {
             // Safari: probe skip — IOSurface always works, direct detection unnecessary
             // Saves one readPixels GPU-CPU sync (one-time but still)
             updateTextureExecutor = updateVideoTextureIOSurfaceWebGL2;
             useCanvasFallback = false;
+            gl.useProgram(shaderProgram);
+            gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
             logit("🍎 [Safari] IOSurface (WebGL2) executor armed — probe skipped.");
         
         } else if (isSafariWebKit && !isWebGL2Supported) {
@@ -443,16 +468,22 @@ function settingCamera() {
             // Saves one readPixels GPU-CPU sync (one-time but still)
             updateTextureExecutor = updateVideoTextureIOSurfaceWebGL1;
             useCanvasFallback = false;
+            gl.useProgram(shaderProgram);
+            gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
             logit("🍎 [Safari] IOSurface (WebGL1) executor armed — probe skipped.");
 
         } else if (isProbeArmed) {
             updateTextureExecutor = probeExecutor;
+            gl.useProgram(shaderProgram);
+            gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
             logit("⏳ [PROBE] Probe armed — awaiting first camera frame...");
 
         } else {
             updateTextureExecutor = useCanvasFallback
                 ? updateVideoTextureCanvasFallback
                 : updateVideoTextureDirect;
+            gl.useProgram(shaderProgram);
+            gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
             logit("🚀 Pipeline restored using previous probe result.");
         }
 
@@ -474,11 +505,7 @@ function settingCamera() {
 
         var constraints = {
             audio: false,
-            video: {
-                facingMode: 'environment',
-                width:  { ideal: 1280 },
-                height: { ideal: 720  }
-            }
+            video: true
         };
         navigator.mediaDevices.getUserMedia(constraints)
             .then(function(stream) {
@@ -550,6 +577,8 @@ function settingCamera() {
         }
     });
 
+    // ──   SCREEN RESOULTION UPDATOR ──────────────────────────────────────────────────
+
     startCameraPipeline(); // Fire on load
 }
 
@@ -558,7 +587,6 @@ function updateVideoTextureDirect(videoElement) {
     // currentTime equality guard: prevents redundant uploads when no new frame decoded
     if (videoElement.currentTime === lastFrameTime || videoElement.readyState < 2) return;
     lastFrameTime = videoElement.currentTime;
-    gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
@@ -568,7 +596,6 @@ function updateVideoTextureCanvasFallback(videoElement) {
     lastFrameTime = videoElement.currentTime;
     // Intermediate CPU blit: compositor sees canvas bitmap, not the locked EGLImage/SurfaceTexture
     stagingCtx.drawImage(videoElement, 0, 0, stagingCanvas.width, stagingCanvas.height);
-    gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, stagingCanvas);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
@@ -576,7 +603,6 @@ function updateVideoTextureCanvasFallback(videoElement) {
 function updateVideoTextureIOSurfaceWebGL1(videoElement) {
     if (videoElement.currentTime === lastFrameTime || videoElement.readyState < 2) return;
     lastFrameTime = videoElement.currentTime;
-    gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
     // gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -585,7 +611,6 @@ function updateVideoTextureIOSurfaceWebGL1(videoElement) {
 function updateVideoTextureIOSurfaceWebGL2(videoElement) {
     if (videoElement.currentTime === lastFrameTime || videoElement.readyState < 2) return;
     lastFrameTime = videoElement.currentTime;
-    gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
@@ -709,6 +734,8 @@ function createWebGLProgram(vsSource, fsSource) {
     gl.bindAttribLocation(program, 0, "a_position");
 
     gl.linkProgram(program);
+    uResolutionLoc = null;
+    uResolutionLoc = gl.getUniformLocation(program, "u_resolution");
 
     // The GLSL bytecode is now baked into the program object.
     // These shader handles serve no further purpose but hold driver-side memory.
@@ -759,6 +786,8 @@ window.addEventListener("DOMContentLoaded", function() {
         settingCamera();
 
         window.addEventListener('resize', function() {
+            currentWidth = window.innerWidth;
+            currentHeight = window.innerHeight;
             if (alignHardwareLayersRef) alignHardwareLayersRef();
         });
     });
