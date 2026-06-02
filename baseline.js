@@ -25,6 +25,7 @@ let currentWidth           = window.innerWidth;
 let currentHeight          = window.innerHeight;
 var logs                   = '-- logs --------------------';
 var uResolutionLoc         = null;
+var isFirefox              = navigator.userAgent.toLowerCase().includes('firefox');
 let resolutionBuffer;
 
 function staticDummyExecutor(vid) { /* Safe No-Op: runs before camera is ready */ }
@@ -454,12 +455,20 @@ function settingCamera() {
             logit("🚀 [WebGPU] Canvas resized — no VRAM realloc needed.");
             return; 
 
+        } else if (isFirefox) {
+            isProbeArmed = false;
+            useCanvasFallback = true;
+            updateTextureExecutor = updateVideoTextureCanvasFallback;
+            restoreHoistedState();
+            gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
+            logit("🦊 Firefox Mobile detected — Canvas fallback forced to fix lag.");
+
         } else if (isSafariWebKit && isWebGL2Supported) {
             // Safari: probe skip — IOSurface always works, direct detection unnecessary
             // Saves one readPixels GPU-CPU sync (one-time but still)
             updateTextureExecutor = updateVideoTextureIOSurfaceWebGL2;
             useCanvasFallback = false;
-            gl.useProgram(shaderProgram);
+            restoreHoistedState();
             gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
             logit("🍎 [Safari] IOSurface (WebGL2) executor armed — probe skipped.");
         
@@ -468,7 +477,7 @@ function settingCamera() {
             // Saves one readPixels GPU-CPU sync (one-time but still)
             updateTextureExecutor = updateVideoTextureIOSurfaceWebGL1;
             useCanvasFallback = false;
-            gl.useProgram(shaderProgram);
+            restoreHoistedState();
             gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
             logit("🍎 [Safari] IOSurface (WebGL1) executor armed — probe skipped.");
 
@@ -482,7 +491,7 @@ function settingCamera() {
             updateTextureExecutor = useCanvasFallback
                 ? updateVideoTextureCanvasFallback
                 : updateVideoTextureDirect;
-            gl.useProgram(shaderProgram);
+            restoreHoistedState();
             gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
             logit("🚀 Pipeline restored using previous probe result.");
         }
@@ -505,7 +514,9 @@ function settingCamera() {
 
         var constraints = {
             audio: false,
-            video: true
+            video: { 
+                facingMode: "environment" 
+            }
         };
         navigator.mediaDevices.getUserMedia(constraints)
             .then(function(stream) {
