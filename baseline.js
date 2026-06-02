@@ -166,6 +166,13 @@ function hardwareInfo(){
         logit("⚠️ Legacy silicon — stride/NPOT guardrails active.", 2);
     }
 
+    // ── CHECKING FOR FIREFOX ────────────────────────────────────────────────────────
+    if (isFirefox){
+        logit(`🦊 Firefox browser detected!
+            Switching to Google Chrome is recomended for best possible performance.`, 2)
+    }
+
+
     // ── LOGGING SCREEN INFO ─────────────────────────────────────────────────────────
     logit(`
             <br>
@@ -434,11 +441,14 @@ function settingCamera() {
         // never updated the viewport or CSS when video dimensions hadn't changed.
         vid.style.width          = targetWidth  + "px";
         vid.style.height         = targetHeight + "px";
-        gl_overlay.width         = targetWidth;
-        gl_overlay.height        = targetHeight;
+        
+        // CRITICAL: Draw only at native stream resolution, bypass screen DPI fill-rate limits
+        gl_overlay.width         = wVideo;
+        gl_overlay.height        = hVideo;
+        
         gl_overlay.style.width   = targetWidth  + "px";
         gl_overlay.style.height  = targetHeight + "px";
-        if (gl) gl.viewport(0, 0, targetWidth, targetHeight);
+        if (gl) gl.viewport(0, 0, wVideo, hVideo);
 
         // We only re-allocate when the video's native resolution changes, or on first run.
         var needsVRAMInit = !stagingCanvas
@@ -470,14 +480,6 @@ function settingCamera() {
 
             logit("🚀 [WebGPU] Canvas resized — no VRAM realloc needed.");
             return; 
-
-        } else if (isFirefox) {
-            isProbeArmed = false;
-            useCanvasFallback = true;
-            updateTextureExecutor = updateVideoTextureCanvasFallback;
-            restoreHoistedState();
-            gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
-            logit("🦊 Firefox Mobile detected — Canvas fallback forced to fix lag.");
 
         } else if (isSafariWebKit && isWebGL2Supported) {
             // Safari: probe skip — IOSurface always works, direct detection unnecessary
@@ -524,14 +526,23 @@ function settingCamera() {
             video: { 
                 facingMode: "environment", 
                 advanced: [
-                { width: 1080, height: 1920, frameRate: { min: 55, max: 60 } },
-                { width: 1920, height: 1080, frameRate: { min: 55, max: 60 } },
-                
-                { width: 720, height: 1280, frameRate: { min: 55, max: 60 } },
-                { width: 1280, height: 720, frameRate: { min: 55, max: 60 } },
+                    // Priority 1: Portrait 1080p @ 60fps
+                    { width: 1080, height: 1920, frameRate: 60 },
+                    // Priority 2: Landscape 1080p @ 60fps
+                    { width: 1920, height: 1080, frameRate: 60 },
+                    
+                    // Priority 3: Portrait 720p @ 60fps
+                    { width: 720, height: 1280, frameRate: 60 },
+                    // Priority 4: Landscape 720p @ 60fps
+                    { width: 1280, height: 720, frameRate: 60 },
 
-                { width: 720, height: 1280 },
-                { width: 1280, height: 720 }
+                    // Priority 5: Fall back to 1080p at native frame rate (e.g., 30fps)
+                    { width: 1080, height: 1920 },
+                    { width: 1920, height: 1080 },
+                    
+                    // Priority 6: Fall back to 720p at native frame rate (e.g., 30fps)
+                    { width: 720, height: 1280 },
+                    { width: 1280, height: 720 }
                 ]
             }
         };
@@ -621,6 +632,7 @@ function updateVideoTextureDirect(videoElement) {
     // currentTime equality guard: prevents redundant uploads when no new frame decoded
     if (videoElement.currentTime === lastFrameTime || videoElement.readyState < 2) return;
     lastFrameTime = videoElement.currentTime;
+    gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
@@ -630,6 +642,7 @@ function updateVideoTextureCanvasFallback(videoElement) {
     lastFrameTime = videoElement.currentTime;
     // Intermediate CPU blit: compositor sees canvas bitmap, not the locked EGLImage/SurfaceTexture
     stagingCtx.drawImage(videoElement, 0, 0, stagingCanvas.width, stagingCanvas.height);
+    gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, stagingCanvas);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
@@ -637,6 +650,7 @@ function updateVideoTextureCanvasFallback(videoElement) {
 function updateVideoTextureIOSurfaceWebGL1(videoElement) {
     if (videoElement.currentTime === lastFrameTime || videoElement.readyState < 2) return;
     lastFrameTime = videoElement.currentTime;
+    gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
     // gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -645,6 +659,7 @@ function updateVideoTextureIOSurfaceWebGL1(videoElement) {
 function updateVideoTextureIOSurfaceWebGL2(videoElement) {
     if (videoElement.currentTime === lastFrameTime || videoElement.readyState < 2) return;
     lastFrameTime = videoElement.currentTime;
+    gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
