@@ -25,6 +25,12 @@ let currentWidth           = window.innerWidth;
 let currentHeight          = window.innerHeight;
 var logs                   = '-- logs --------------------';
 var uResolutionLoc         = null;
+var wVideo                 = 0;
+var hVideo                 = 0;
+var wScreen                = 0;
+var hScreen                = 0;
+var targetWidth            = 0;
+var targetHeight           = 0;
 var isFirefox              = navigator.userAgent.toLowerCase().includes('firefox');
 let resolutionBuffer;
 
@@ -411,18 +417,18 @@ function settingCamera() {
 
     // ── Layout + VRAM sync ────────────────────────────────────────────────────
     alignHardwareLayersRef = function() {
-        var wVideo = vid.videoWidth;
-        var hVideo = vid.videoHeight;
+        wVideo = vid.videoWidth;
+        hVideo = vid.videoHeight;
         if (wVideo === 0 || hVideo === 0) return; // Decoder not ready
 
         var bounds  = container.getBoundingClientRect();
-        var wScreen = bounds.width;
-        var hScreen = bounds.height;
+        wScreen = bounds.width;
+        hScreen = bounds.height;
         if (wScreen === 0 || hScreen === 0) return; // [MISC] Container not yet laid out
 
         var targetScale  = Math.max(wScreen / wVideo, hScreen / hVideo);
-        var targetWidth  = Math.round(wVideo * targetScale);  
-        var targetHeight = Math.round(hVideo * targetScale); 
+        targetWidth  = Math.round(wVideo * targetScale);  
+        targetHeight = Math.round(hVideo * targetScale); 
 
         // Old code had this inside the VRAM guard, so orientation changes / window resizes
         // never updated the viewport or CSS when video dimensions hadn't changed.
@@ -446,8 +452,12 @@ function settingCamera() {
             }
             stagingCanvas.width  = wVideo;
             stagingCanvas.height = hVideo;
-            allocateVRAMTexture(wVideo, hVideo); 
+            if (activeRenderPath === 1 && gl) {
+                allocateVRAMTexture(wVideo, hVideo); 
+            }
         }
+
+        hardwareInfo();
 
         if (activeRenderPath === 2 /*webgpu*/) { 
             updateTextureExecutor = renderWebGPU;
@@ -500,10 +510,7 @@ function settingCamera() {
             restoreHoistedState();
             gl.uniform2f(uResolutionLoc, targetWidth, targetHeight);
             logit("🚀 Pipeline restored using previous probe result.");
-        }
-
-        logit("✅ Layers Synchronized: " + wVideo + "x" + hVideo);
-        hardwareInfo();
+        }        
     };
 
     // ── Camera pipeline ───────────────────────────────────────────────────────
