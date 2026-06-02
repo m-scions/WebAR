@@ -159,6 +159,15 @@ function hardwareInfo(){
     if (isLegacySilicon) {
         logit("⚠️ Legacy silicon — stride/NPOT guardrails active.", 2);
     }
+
+    // ── LOGGING SCREEN INFO ─────────────────────────────────────────────────────────
+    logit(`
+            <br>
+            <b>System Hardware Info:</b>
+            <hr>
+            <b>Active Native Stream Pipeline:</b><br/>
+            ├─ <b>HTML Video Element Res:</b> <span> ${wVideo}x${hVideo} px </span><br/>
+            └─ <b>Hardware Track Config:</b> <span> ${wScreen}x${hScreen} px </span><br/>`);
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
@@ -187,8 +196,6 @@ function init() {
         logit("❌ CRITICAL: WebGL context creation failed.", 3);
         return;
     }
-
-    hardwareInfo();
 
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);                         // Mali-4xx stride crash fix
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE); // No color-matrix overhead
@@ -249,7 +256,6 @@ async function detectWebGPU() {
 }
 
 function initWebGPU() {
-    hardwareInfo();
     canvas = document.querySelector('#gl_overlay');
 
     gpuContext = canvas.getContext('webgpu');
@@ -497,13 +503,7 @@ function settingCamera() {
         }
 
         logit("✅ Layers Synchronized: " + wVideo + "x" + hVideo);
-        logit(`
-            <br>
-            <b>System Hardware Info:</b>
-            <hr>
-            <b>Active Native Stream Pipeline:</b><br/>
-            ├─ <b>HTML Video Element Res:</b> <span> ${wVideo}x${hVideo} px </span><br/>
-            └─ <b>Hardware Track Config:</b> <span> ${wScreen}x${hScreen} px </span><br/>`);
+        hardwareInfo();
     };
 
     // ── Camera pipeline ───────────────────────────────────────────────────────
