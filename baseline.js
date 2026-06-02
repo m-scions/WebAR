@@ -524,11 +524,15 @@ function settingCamera() {
             video: { 
                 facingMode: "environment", 
                 advanced: [
-                    { width: 1920, height: 1080 }, // 1080p (Landscape orientation)
-                    { width: 1080, height: 1920 }, // 1080p (Portrait orientation)
-                    { width: 1280, height: 720 },  // 720p (Landscape fallback)
-                    { width: 720, height: 1280 }   // 720p (Portrait fallback)
-                ]
+                { width: 1920, height: 1080, frameRate: 60 }, // 1st Choice: Full HD 60 FPS (Landscape)
+                { width: 1080, height: 1920, frameRate: 60 }, // Portrait 60 FPS
+                
+                { width: 1920, height: 1080, frameRate: 30 }, // 2nd Choice: Full HD 30 FPS (If 60fps not supported)
+                { width: 1080, height: 1920, frameRate: 30 },
+                
+                { width: 1280, height: 720, frameRate: 60 },  // 3rd Choice: HD 60 FPS (Saves bandwidth, high smoothness)
+                { width: 720, height: 1280, frameRate: 60 }
+            ]
             }
         };
         navigator.mediaDevices.getUserMedia(constraints)
