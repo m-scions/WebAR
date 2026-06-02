@@ -524,15 +524,15 @@ function settingCamera() {
             video: { 
                 facingMode: "environment", 
                 advanced: [
-                { width: 1920, height: 1080, frameRate: 60 }, // 1st Choice: Full HD 60 FPS (Landscape)
-                { width: 1080, height: 1920, frameRate: 60 }, // Portrait 60 FPS
+                { width: 1080, height: 1920, frameRate: { min: 55, max: 60 } },
+                { width: 1920, height: 1080, frameRate: { min: 55, max: 60 } },
                 
-                { width: 1920, height: 1080, frameRate: 30 }, // 2nd Choice: Full HD 30 FPS (If 60fps not supported)
-                { width: 1080, height: 1920, frameRate: 30 },
-                
-                { width: 1280, height: 720, frameRate: 60 },  // 3rd Choice: HD 60 FPS (Saves bandwidth, high smoothness)
-                { width: 720, height: 1280, frameRate: 60 }
-            ]
+                { width: 720, height: 1280, frameRate: { min: 55, max: 60 } },
+                { width: 1280, height: 720, frameRate: { min: 55, max: 60 } },
+
+                { width: 720, height: 1280 },
+                { width: 1280, height: 720 }
+                ]
             }
         };
         navigator.mediaDevices.getUserMedia(constraints)
@@ -552,12 +552,18 @@ function settingCamera() {
                 vid.srcObject = stream;
                 var playPromise = vid.play()
                 if (playPromise !== undefined) {
-                    playPromise.catch(function(e) { console.error("Autoplay blocked:", e); logit("Autoplay blocked: " + e ); });
+                    playPromise.catch(function(e) { console.error("Autoplay blocked:", e); logit("Autoplay blocked: " + e , 3); });
                 }
                 // On initial load the rAF is already running from DOMContentLoaded.
                 if (!rafHandle) {
-                    rafHandle = requestAnimationFrame(renderLoop);
+                if (vid.requestVideoFrameCallback) {
+                    rafHandle = vid.requestVideoFrameCallback(renderLoopRVFC);
+                    logit("🎯 [Curvix Engine] Locked to Native Hardware rVFC Loop.");
+                } else {
+                    rafHandle = requestAnimationFrame(renderLoopRAF);
+                    logit("⚠️ [Curvix Engine] Fallback to Display rAF Loop.");
                 }
+            }
                 logit("🚀 Camera hardware linked successfully.");
             })
             .catch(function(err) {
@@ -782,9 +788,16 @@ function createWebGLProgram(vsSource, fsSource) {
 }
 
 // ── RENDER LOOP ───────────────────────────────────────────────────────────────
-function renderLoop() {
-    updateTextureExecutor(cameraElement); 
-    rafHandle = requestAnimationFrame(renderLoop);
+// ── PATH A: High-Precision Hardware Clock Loop (rVFC) ─────────────────────
+function renderLoopRVFC(now, metadata) {
+    updateTextureExecutor(cameraElement);
+    rafHandle = cameraElement.requestVideoFrameCallback(renderLoopRVFC);
+}
+
+// ── PATH B: Legacy Refresh-Rate Loop Fallback (rAF) ───────────────────────
+function renderLoopRAF() {
+    updateTextureExecutor(cameraElement);
+    rafHandle = requestAnimationFrame(renderLoopRAF);
 }
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
