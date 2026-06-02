@@ -522,7 +522,13 @@ function settingCamera() {
         var constraints = {
             audio: false,
             video: { 
-                facingMode: "environment" 
+                facingMode: "environment", 
+                advanced: [
+                    { width: 1920, height: 1080 }, // 1080p (Landscape orientation)
+                    { width: 1080, height: 1920 }, // 1080p (Portrait orientation)
+                    { width: 1280, height: 720 },  // 720p (Landscape fallback)
+                    { width: 720, height: 1280 }   // 720p (Portrait fallback)
+                ]
             }
         };
         navigator.mediaDevices.getUserMedia(constraints)
