@@ -1,4 +1,5 @@
 // ── Engine State ──────────────────────────────────────────────────────────────
+let   logBox                 = null;
 let   webStream              = null;
 let   alignHardwareLayersRef = null;
 let   vidtex                 = null;
@@ -123,8 +124,10 @@ let shaderProgram  = null;
 let positionBuffer = null;
 let canvas         = null;
 
+
+// ── VERSION LOG ──────────────────────────────────────────────────────────────────
+logit("WebAR engine version: 0.0.34")
 // ── LIVE LOGS ──────────────────────────────────────────────────────────────────
-let logBox = null;
 function logit(text, mode = 1){
     if (mode === 1) {
         logs += '<br>' + text;
@@ -697,7 +700,6 @@ function settingCamera() {
 
                 vid.addEventListener('loadeddata', async function startLoopOnReady() {
                     if (alignHardwareLayersRef) alignHardwareLayersRef();
-                    if (!calibrationDone) await calibrationPromise;
 
                     if (!rafHandle) {
                         // rAF is the default; rVFC only if explicitly enabled
