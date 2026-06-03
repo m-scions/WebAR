@@ -126,7 +126,8 @@ let canvas         = null;
 
 
 // ── VERSION LOG ──────────────────────────────────────────────────────────────────
-logit("WebAR engine version: 0.0.34")
+logit("WebAR engine version: 0.0.35")
+
 // ── LIVE LOGS ──────────────────────────────────────────────────────────────────
 function logit(text, mode = 1){
     if (mode === 1) {
@@ -655,10 +656,10 @@ function settingCamera() {
         } else {
             if (useCanvasFallback) {
                 updateTextureExecutorFast   = updateVideoTextureCanvasFallback;
-                updateTextureExecutorLegacy = updateVideoTextureCanvasFallback;
+                updateTextureExecutorLegacy = updateVideoTextureCanvasFallbackLegacy;  
             } else {
                 updateTextureExecutorFast   = updateVideoTextureDirectFast;
-                updateTextureExecutorLegacy = updateVideoTextureDirectFast;
+                updateTextureExecutorLegacy = updateVideoTextureDirectLegacy;          
             }
             restoreHoistedState();
             logit("🚀 Dual‑path pipeline synchronized.");
@@ -784,7 +785,24 @@ function updateVideoTextureDirectFast(videoElement) {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
+function updateVideoTextureDirectLegacy(videoElement) {
+    if (videoElement.currentTime === lastFrameTime) return;
+    lastFrameTime = videoElement.currentTime;
+    gl.bindTexture(gl.TEXTURE_2D, vidtex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);  
+}
+
 function updateVideoTextureCanvasFallback(videoElement) {
+    stagingCtx.drawImage(videoElement, 0, 0, stagingCanvas.width, stagingCanvas.height);
+    gl.bindTexture(gl.TEXTURE_2D, vidtex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, stagingCanvas);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function updateVideoTextureCanvasFallbackLegacy(videoElement) {
+    if (videoElement.currentTime === lastFrameTime) return;
+    lastFrameTime = videoElement.currentTime;
     stagingCtx.drawImage(videoElement, 0, 0, stagingCanvas.width, stagingCanvas.height);
     gl.bindTexture(gl.TEXTURE_2D, vidtex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, stagingCanvas);
@@ -853,12 +871,12 @@ function probeExecutor(videoElement) {
 
     if (directWorks) {
         updateTextureExecutorFast   = updateVideoTextureDirectFast;
-        updateTextureExecutorLegacy = updateVideoTextureDirectFast;
+        updateTextureExecutorLegacy = updateVideoTextureDirectLegacy;
         logit("🚀 [PROBE] PASS — Zero‑copy fast‑path unlocked.");
         useCanvasFallback = false;
     } else {
         updateTextureExecutorFast   = updateVideoTextureCanvasFallback;
-        updateTextureExecutorLegacy = updateVideoTextureCanvasFallback;
+        updateTextureExecutorLegacy = updateVideoTextureCanvasFallbackLegacy;
         logit("⚠️ [PROBE] FAIL — Falling back to CPU buffers.", 2);
         useCanvasFallback = true;
     }
