@@ -40,6 +40,8 @@ let   useExternalTexture     = true;
 let   recalibrationRuns      = 0;
 let   lastCandidateHz        = 0;      // for two‑consecutive agreement
 let   pendingUpgradeHz       = 0;
+let   useRVFC                = false;  // default OFF – rAF is used
+let   loopType               = 'raf'; 
 const RECALIBRATION_MAX        = 6;
 const RECALIBRATION_DELAY      = 2000;   // 2 s between re‑checks
 const MIN_OCCURRENCES_INITIAL  = 5;
@@ -176,15 +178,6 @@ function hardwareInfo(){
 // ── REFRESH RATE CALIBRATION ──────────────────────────
 function calibrateRefreshRate() {
     return new Promise((resolve) => {
-        if (hasRVFC) {
-            hardwareHz = 60;          // arbitrary, not used by rVFC loop
-            frameStepSize = 1.0;
-            calibrationDone = true;
-            logit("🎯 rVFC available – refresh calibration skipped.");
-            resolve();
-            return;
-        }
-
         if (!hasRAF) {
             hardwareHz = 60;  frameStepSize = 1.0;
             calibrationDone = true;
@@ -221,7 +214,6 @@ function calibrateRefreshRate() {
 }
 
 function startRecalibration() {
-    if (hasRVFC) return;
     if (recalibrationRuns >= RECALIBRATION_MAX) return;
     setTimeout(() => {
         quickRecalibration();
@@ -579,7 +571,7 @@ function settingCamera() {
         hScreen = bounds.height;
         if (wScreen === 0 || hScreen === 0) return;
 
-        const targetScale = Math.max(wScreen / wVideo, hScreen / hVideo);
+        const targetScale = Math.min(wScreen / wVideo, hScreen / hVideo);
         targetWidth  = Math.round(wVideo * targetScale);
         targetHeight = Math.round(hVideo * targetScale);
 
@@ -705,18 +697,21 @@ function settingCamera() {
 
                 vid.addEventListener('loadeddata', async function startLoopOnReady() {
                     if (alignHardwareLayersRef) alignHardwareLayersRef();
-                    // Wait for calibration to finish before entering the paced loop
                     if (!calibrationDone) await calibrationPromise;
+
                     if (!rafHandle) {
-                        if (vid.requestVideoFrameCallback) {
+                        // rAF is the default; rVFC only if explicitly enabled
+                        if (useRVFC && vid.requestVideoFrameCallback) {
                             rafHandle = vid.requestVideoFrameCallback(renderLoopRVFC);
-                            logit("🎯 Locked to rVFC Loop.");
+                            loopType = 'rvfc';
+                            logit("🎯 rVFC Loop (manually enabled).");
                         } else if (hasRAF) {
                             rafHandle = requestAnimationFrame(renderLoopRAF);
-                            logit("⚠️ Fallback to rAF Loop.");
+                            loopType = 'raf';
+                            logit("🔄 rAF Loop (default).");
                         } else {
-                            // Ancient phone: setTimeout loop
                             rafHandle = setTimeout(renderLoopTimeout, 16);
+                            loopType = 'timeout';
                             logit("⏱️ Fallback to setTimeout loop (legacy device).");
                         }
                     }
@@ -752,9 +747,15 @@ function settingCamera() {
             updateTextureExecutorFast   = staticDummyExecutor;
             updateTextureExecutorLegacy = staticDummyExecutor;
             if (rafHandle) {
-                if (hasRAF) cancelAnimationFrame(rafHandle);
-                else clearTimeout(rafHandle);
+                if (loopType === 'rvfc') {
+                    vid.cancelVideoFrameCallback(rafHandle);
+                } else if (loopType === 'raf') {
+                    cancelAnimationFrame(rafHandle);
+                } else { // 'timeout'
+                    clearTimeout(rafHandle);
+                }
                 rafHandle = null;
+                loopType = 'raf';  // reset to default
             }
             if (requiresGesture && !b_cam.checked) showPlayButton();
             logit("🛑 Pipeline stopped. Memory references unlinked.");
@@ -959,8 +960,13 @@ window.addEventListener("DOMContentLoaded", async function() {
 
 window.addEventListener("beforeunload", () => {
     if (rafHandle) {
-        if (hasRAF) cancelAnimationFrame(rafHandle);
-        else clearTimeout(rafHandle);
+        if (loopType === 'rvfc') {
+            cameraElement.cancelVideoFrameCallback(rafHandle);
+        } else if (loopType === 'raf') {
+            cancelAnimationFrame(rafHandle);
+        } else {
+            clearTimeout(rafHandle);
+        }
         rafHandle = null;
     }
     if (webStream) {
