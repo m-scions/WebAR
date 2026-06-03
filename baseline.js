@@ -38,6 +38,7 @@ let   gpuPipelineFallback    = null;
 let   gpuBindGroupLayoutFallback = null;
 let   gpuFallbackTexture     = null;    
 let   useExternalTexture     = true;    
+let   lastFrameTime          = -1;
 let   recalibrationRuns      = 0;
 let   lastCandidateHz        = 0;      // for two‑consecutive agreement
 let   pendingUpgradeHz       = 0;
@@ -126,7 +127,7 @@ let canvas         = null;
 
 
 // ── VERSION LOG ──────────────────────────────────────────────────────────────────
-logit("WebAR engine version: 0.0.35")
+logit("WebAR engine version: 0.0.36")
 
 // ── LIVE LOGS ──────────────────────────────────────────────────────────────────
 function logit(text, mode = 1){
@@ -749,6 +750,7 @@ function settingCamera() {
             if (gl) gl.bindTexture(gl.TEXTURE_2D, null);
             updateTextureExecutorFast   = staticDummyExecutor;
             updateTextureExecutorLegacy = staticDummyExecutor;
+            lastFrameTime = -1;
             if (rafHandle) {
                 if (loopType === 'rvfc') {
                     vid.cancelVideoFrameCallback(rafHandle);
