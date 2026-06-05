@@ -127,7 +127,7 @@ let canvas         = null;
 
 
 // ── VERSION LOG ──────────────────────────────────────────────────────────────────
-logit("WebAR engine version: 0.0.36")
+logit("WebAR engine version: 0.0.37")
 
 // ── LIVE LOGS ──────────────────────────────────────────────────────────────────
 function logit(text, mode = 1){
@@ -576,7 +576,7 @@ function settingCamera() {
         hScreen = bounds.height;
         if (wScreen === 0 || hScreen === 0) return;
 
-        const targetScale = Math.min(wScreen / wVideo, hScreen / hVideo);
+        const targetScale = Math.max(wScreen / wVideo, hScreen / hVideo);
         targetWidth  = Math.round(wVideo * targetScale);
         targetHeight = Math.round(hVideo * targetScale);
 
@@ -672,20 +672,37 @@ function settingCamera() {
         if (isCameraStarting) return;
         isCameraStarting = true;
 
+        // Determine screen orientation
+        const isPortrait = window.innerHeight > window.innerWidth;
         const constraints = {
             audio: false,
             video: { 
                 facingMode: "environment",
-                advanced: [
-                    { width: 1080, height: 1920, frameRate: 60 },
-                    { width: 1920, height: 1080, frameRate: 60 },
-                    { width: 720,  height: 1280, frameRate: 60 },
-                    { width: 1280, height: 720,  frameRate: 60 },
-                    { width: 1080, height: 1920 },
-                    { width: 1920, height: 1080 },
-                    { width: 720,  height: 1280 },
-                    { width: 1280, height: 720  }
-                ]
+                advanced: (() => {
+                    const arr = [];
+                    if (isPortrait) {
+                        // Portrait first
+                        arr.push({ width: 1080, height: 1920, frameRate: 60 });
+                        arr.push({ width: 1920, height: 1080, frameRate: 60 });
+                        arr.push({ width: 720,  height: 1280, frameRate: 60 });
+                        arr.push({ width: 1280, height: 720,  frameRate: 60 });
+                        arr.push({ width: 1080, height: 1920 });
+                        arr.push({ width: 1920, height: 1080 });
+                        arr.push({ width: 720,  height: 1280 });
+                        arr.push({ width: 1280, height: 720 });
+                    } else {
+                        // Landscape first
+                        arr.push({ width: 1920, height: 1080, frameRate: 60 });
+                        arr.push({ width: 1080, height: 1920, frameRate: 60 });
+                        arr.push({ width: 1280, height: 720,  frameRate: 60 });
+                        arr.push({ width: 720,  height: 1280, frameRate: 60 });
+                        arr.push({ width: 1920, height: 1080 });
+                        arr.push({ width: 1080, height: 1920 });
+                        arr.push({ width: 1280, height: 720 });
+                        arr.push({ width: 720,  height: 1280 });
+                    }
+                    return arr;
+                })()
             }
         };
 
