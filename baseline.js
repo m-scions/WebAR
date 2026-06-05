@@ -127,7 +127,7 @@ let canvas         = null;
 
 
 // ── VERSION LOG ──────────────────────────────────────────────────────────────────
-logit("WebAR engine version: 0.0.37")
+logit("WebAR engine version: 0.0.38")
 
 // ── LIVE LOGS ──────────────────────────────────────────────────────────────────
 function logit(text, mode = 1){
@@ -683,23 +683,15 @@ function settingCamera() {
                     if (isPortrait) {
                         // Portrait first
                         arr.push({ width: 1080, height: 1920, frameRate: 60 });
-                        arr.push({ width: 1920, height: 1080, frameRate: 60 });
                         arr.push({ width: 720,  height: 1280, frameRate: 60 });
-                        arr.push({ width: 1280, height: 720,  frameRate: 60 });
                         arr.push({ width: 1080, height: 1920 });
-                        arr.push({ width: 1920, height: 1080 });
                         arr.push({ width: 720,  height: 1280 });
-                        arr.push({ width: 1280, height: 720 });
                     } else {
                         // Landscape first
                         arr.push({ width: 1920, height: 1080, frameRate: 60 });
-                        arr.push({ width: 1080, height: 1920, frameRate: 60 });
                         arr.push({ width: 1280, height: 720,  frameRate: 60 });
-                        arr.push({ width: 720,  height: 1280, frameRate: 60 });
                         arr.push({ width: 1920, height: 1080 });
-                        arr.push({ width: 1080, height: 1920 });
                         arr.push({ width: 1280, height: 720 });
-                        arr.push({ width: 720,  height: 1280 });
                     }
                     return arr;
                 })()
